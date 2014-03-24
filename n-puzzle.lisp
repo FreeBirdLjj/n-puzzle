@@ -158,7 +158,7 @@
           (LEFT
            (let ((i (position 0 state))
                  (j (1- (position 0 state))))
-             (unless (zerop (mod i *width))
+             (unless (zerop (mod i *width*))
                (swap state i j))))
           (RIGHT
            (let ((i (position 0 state))
