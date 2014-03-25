@@ -64,7 +64,7 @@
 
 (defstruct fringe
   (key #'identity)
-  (elements (make-heap))) ; Heap
+  (elements (make-heap)))
 
 (defun fringe-remove (q)
   (heap-pop (fringe-elements q) (fringe-key q)))
@@ -82,21 +82,6 @@
   (path-cost 0)
   (depth 0))
 
-(defun expand (heuristic successor node fringe)
-  (mapcar (lambda (direction-state-cost)
-            (let ((direction (aref direction-state-cost 0))
-                  (state (aref direction-state-cost 1))
-                  (cost (aref direction-state-cost 2))
-                  (depth (node-depth node)))
-              (make-node :state state
-                         :parent node
-                         :direction direction
-                         :path-cost (+ depth cost)
-                         :depth (1+ depth))))
-          (remove-if (lambda (temp-triple)
-                       (find (aref temp-triple 1) (fringe-elements fringe) :key #'node-state :test #'equal))
-                     (funcall successor heuristic (node-state node) (node-direction node)))))
-
 (defun direction-sequence (node)
   (labels ((direction-sequence-iter (node directions)
              (if (null (node-parent node))
@@ -104,21 +89,59 @@
                (direction-sequence-iter (node-parent node) (cons (node-direction node) directions)))))
     (direction-sequence-iter node nil)))
 
-(defun A*-search (heuristic fringe successor goalp)
-  (let ((node (fringe-remove fringe)))
-    (if (funcall goalp (node-state node))
-        (list (direction-sequence node) (node-depth node))
-      (A*-search heuristic
-                 (fringe-insert fringe (expand heuristic successor node fringe))
-                 successor
-                 goalp))))
+(defun A*-search (action heuristic goalp initial-state)
+  (labels ((expand (node fringe)
+             (mapcar (lambda (direction-state-cost)
+                       (let ((direction (aref direction-state-cost 0))
+                             (state (aref direction-state-cost 1))
+                             (cost (aref direction-state-cost 2))
+                             (depth (node-depth node)))
+                         (make-node :state state
+                                    :parent node
+                                    :direction direction
+                                    :path-cost (+ depth cost)
+                                    :depth (1+ depth))))
+                     (remove-if (lambda (temp-triple)
+                                  (find (aref temp-triple 1) (fringe-elements fringe) :key #'node-state :test #'equal))
+                                (mapcar (lambda (state-direction)
+                                          (let ((state (car state-direction))
+                                                (direction (cdr state-direction)))
+                                            (vector direction state (funcall heuristic state))))
+                                        (funcall action (node-state node) (node-direction node))))))
+           (search-iter (fringe)
+             (let ((node (fringe-remove fringe)))
+               (if (funcall goalp (node-state node))
+                   (list (direction-sequence node) (node-depth node))
+                 (search-iter (fringe-insert fringe (expand node fringe)))))))
+    (search-iter (fringe-insert (make-fringe :key #'node-path-cost)
+                                (list (make-node :state initial-state))))))
 
-(defun tree-search (search successor heuristic goalp initial-state)
-  (funcall search
-           heuristic
-           (fringe-insert (make-fringe :key #'node-path-cost) (list (make-node :state initial-state)))
-           successor
-           goalp))
+(defun IDA*-search (action heuristic goalp initial-state)
+  (let ((max-cost-limit 105)
+        (initial-node (make-node :state initial-state)))
+    (labels ((expand (node)
+               (mapcar (lambda (state-direction)
+                         (let ((state (car state-direction))
+                               (direction (cdr state-direction))
+                               (depth (node-depth node)))
+                           (make-node :state state
+                                      :parent node
+                                      :direction direction
+                                      :depth (1+ depth))))
+                       (funcall action (node-state node) (node-direction node))))
+             (search-iter (fringe cost-limit next-cost-limit)
+               (if (null fringe)
+                   (search-iter (list initial-node) next-cost-limit max-cost-limit)
+                 (let* ((node (car fringe))
+                        (rst (cdr fringe))
+                        (car-cost (+ (funcall heuristic (node-state node)) (node-depth node))))
+                   (cond ((> car-cost cost-limit)
+                          (search-iter rst cost-limit (min next-cost-limit car-cost)))
+                         ((funcall goalp (node-state node))
+                          (list (direction-sequence node) (node-depth node)))
+                         (t
+                          (search-iter (nconc (expand node) rst) cost-limit next-cost-limit)))))))
+      (search-iter (list initial-node) (funcall heuristic initial-state) max-cost-limit))))
 
 (defun manhattan (state)
   (declare (special *target*
@@ -167,40 +190,41 @@
                (swap state i j)))))
         direction))
 
-(defparameter *target* (vector 0  1  2
-                               3  -1 4
-                               5  6  7
-                               8  -1 9
-                               10 11 12))
-
 (defparameter *width* 3)
+
+(defparameter *target* (vector 0 1 2
+                               3 4 5
+                               6 7 8))
+
+(defparameter *start* (vector 5 1 8
+                              7 2 3
+                              0 6 4))
 
 (defun goalp (node)
   (equalp node *target*))
 
-(defun successor (heuristic old-state old-direction)
-  (mapcar (lambda (state-direction)
-            (let ((state (car state-direction))
-                  (direction (cdr state-direction)))
-              (vector direction state (funcall heuristic state))))
-          (remove nil
-                  (mapcar (lambda (direction)
-                            (move-blank old-state direction))
-                          (remove (case old-direction
-                                    (UP 'DOWN)
-                                    (DOWN 'UP)
-                                    (RIGHT 'LEFT)
-                                    (LEFT 'RIGHT))
-                                  '(UP DOWN RIGHT LEFT)))
-                  :key #'car)))
+(defun action (old-state old-direction)
+  ;; return a dotted list (state . direction)
+  (remove nil
+          (mapcar (lambda (direction)
+                    (move-blank old-state direction))
+                  (remove (case old-direction
+                            (UP 'DOWN)
+                            (DOWN 'UP)
+                            (RIGHT 'LEFT)
+                            (LEFT 'RIGHT))
+                          '(UP DOWN RIGHT LEFT)))
+          :key #'car))
 
 (defun n-puzzle (search heuristic initial-state)
-  (tree-search search #'successor heuristic #'goalp initial-state))
+  (funcall search #'action heuristic #'goalp initial-state))
 
+(format t "A*-search~%")
+(time (format t "~A~%" (n-puzzle #'IDA*-search
+                                 #'manhattan
+                                 *start*)))
+
+(format t "IDA*-search~%")
 (time (format t "~A~%" (n-puzzle #'A*-search
                                  #'manhattan
-                                 (vector 3  1  2
-                                         8  -1 4
-                                         0  10 5
-                                         11 -1 7
-                                         12 9  6))))
+                                 *start*)))
