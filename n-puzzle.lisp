@@ -57,6 +57,25 @@
                                   key))
 	item))
 
+(defun heap-find (heap val key)
+  (labels ((heap-find-iter (i)
+             (let ((i-val (heap-val heap i key)))
+               (cond
+                ((= i-val val)
+                 (aref heap i))
+                ((or (> i-val val)
+                     (heap-leafp heap i))
+                 nil)
+                (t
+                 (let ((find-left (heap-find-iter (heap-left i))))
+                   (if (null find-left)
+                       (let ((find-right (heap-find-iter (heap-right i))))
+                         (if (null find-right)
+                             nil
+                           find-right))
+                     find-left)))))))
+    (heap-find-iter 0)))
+
 (defun make-heap (&optional (size 1024))
   (make-array size
               :fill-pointer 0
@@ -66,14 +85,17 @@
   (key #'identity)
   (elements (make-heap)))
 
-(defun fringe-remove (q)
-  (heap-pop (fringe-elements q) (fringe-key q)))
+(defun fringe-remove (f)
+  (heap-pop (fringe-elements f) (fringe-key f)))
 
-(defun fringe-insert (q items)
+(defun fringe-insert (f items)
   (mapc (lambda (item)
-          (heap-insert (fringe-elements q) item (fringe-key q)))
+          (heap-insert (fringe-elements f) item (fringe-key f)))
         items)
-  q)
+  f)
+
+(defun fringe-find (f key-val)
+  (heap-find (fringe-elements f) key-val (fringe-key f)))
 
 (defstruct node
   state
@@ -102,7 +124,9 @@
                                     :path-cost (+ depth cost)
                                     :depth (1+ depth))))
                      (remove-if (lambda (temp-triple)
-                                  (find (aref temp-triple 1) (fringe-elements fringe) :key #'node-state :test #'equal))
+                                  (let ((heap-pos (fringe-find fringe (aref temp-triple 2))))
+                                    (and heap-pos
+                                         (equal (node-state heap-pos) (aref temp-triple 2)))))
                                 (mapcar (lambda (state-direction)
                                           (let ((state (car state-direction))
                                                 (direction (cdr state-direction)))
@@ -219,12 +243,12 @@
 (defun n-puzzle (search heuristic initial-state)
   (funcall search #'action heuristic #'goalp initial-state))
 
-(format t "A*-search~%")
+(format t "IDA*-search~%")
 (time (format t "~A~%" (n-puzzle #'IDA*-search
                                  #'manhattan
                                  *start*)))
 
-(format t "IDA*-search~%")
+(format t "A*-search~%")
 (time (format t "~A~%" (n-puzzle #'A*-search
                                  #'manhattan
                                  *start*)))
