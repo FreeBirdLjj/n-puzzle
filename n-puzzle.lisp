@@ -67,13 +67,8 @@
                      (heap-leafp heap i))
                  nil)
                 (t
-                 (let ((find-left (heap-find-iter (heap-left i))))
-                   (if (null find-left)
-                       (let ((find-right (heap-find-iter (heap-right i))))
-                         (if (null find-right)
-                             nil
-                           find-right))
-                     find-left)))))))
+                 (or (heap-find-iter (heap-left i))
+                     (heap-find-iter (heap-right i))))))))
     (heap-find-iter 0)))
 
 (defun make-heap (&optional (size 1024))
