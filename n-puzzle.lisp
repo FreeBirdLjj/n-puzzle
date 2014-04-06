@@ -178,7 +178,7 @@
               (aref *target* i)))))
 
 (defun swap (state i j)
-  ;; move 0 at i to pos j with side-effect.
+  ;; move 0 at i to position j with side-effect.
   (unless (= (aref state j) -1)
     (let ((temp-state (copy-seq state)))
       (rotatef (aref temp-state i) (aref temp-state j))
@@ -186,28 +186,25 @@
 
 (defun move-blank (state direction)
   (declare (special *width*))
-  (cons (case direction
-          (UP
-           (let ((i (position 0 state))
-                 (j (- (position 0 state) *width*)))
-             (when (>= j 0)
-               (swap state i j))))
-          (DOWN
-           (let ((i (position 0 state))
-                 (j (+ (position 0 state) *width*)))
-             (when (< j (length state))
-               (swap state i j))))
-          (LEFT
-           (let ((i (position 0 state))
-                 (j (1- (position 0 state))))
-             (unless (zerop (mod i *width*))
-               (swap state i j))))
-          (RIGHT
-           (let ((i (position 0 state))
-                 (j (1+ (position 0 state))))
-             (unless (zerop (mod (1+ i) *width*))
-               (swap state i j)))))
-        direction))
+  (let ((pos-0 (position 0 state)))
+    (cons (case direction
+            (UP
+             (let ((to (- pos-0 *width*)))
+               (when (>= to 0)
+                 (swap state pos-0 to))))
+            (DOWN
+             (let ((to (+ pos-0 *width*)))
+               (when (< to (length state))
+                 (swap state pos-0 to))))
+            (LEFT
+             (let ((to (1- pos-0)))
+               (unless (zerop (mod pos-0 *width*))
+                 (swap state pos-0 to))))
+            (RIGHT
+             (let ((to (1+ pos-0)))
+               (unless (zerop (mod to *width*))
+                 (swap state pos-0 to)))))
+          direction)))
 
 (defparameter *width* 3)
 
