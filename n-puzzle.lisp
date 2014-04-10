@@ -36,8 +36,8 @@
 
 (defun heap-pop (heap key)
   (let ((minimum (aref heap 0)))
-    (setf (aref heap 0) (aref heap (1- (fill-pointer heap))))
     (decf (fill-pointer heap))
+    (setf (aref heap 0) (aref heap (fill-pointer heap)))
     (heapify heap 0 key)
     minimum))
 
