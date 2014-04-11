@@ -220,7 +220,7 @@
   (equalp node *target*))
 
 (defun action (old-state old-direction)
-  ;; return a dotted list (state . direction)
+  ;; return a list of dotted list (state . direction)
   (remove nil
           (mapcar (lambda (direction)
                     (move-blank old-state direction))
