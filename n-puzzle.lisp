@@ -42,12 +42,13 @@
     minimum))
 
 (defun heap-find-pos (heap i val key)
-  (if (or (zerop i)
-          (< (heap-val heap (heap-parent i) key) val))
+  (let ((parent-i (heap-parent i)))
+    (if (or (zerop i)
+            (< (heap-val heap parent-i key) val))
       i
-    (progn
-      (setf (aref heap i) (aref heap (heap-parent i)))
-      (heap-find-pos heap (heap-parent i) val key))))
+      (progn
+        (setf (aref heap i) (aref heap parent-i))
+        (heap-find-pos heap parent-i val key)))))
 
 (defun heap-insert (heap item key)
   (vector-push-extend nil heap)
