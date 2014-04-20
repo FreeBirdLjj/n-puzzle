@@ -1,3 +1,5 @@
+#!/usr/bin/sbcl --script
+
 (declaim (optimize (speed 3)
                    (compilation-speed 0)
                    (safety 0)
