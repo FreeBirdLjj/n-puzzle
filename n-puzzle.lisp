@@ -168,7 +168,7 @@
 (defun manhattan (state)
   (declare (special *target*
                     *width*))
-  (loop for square from 0 to (reduce #'max state) summing
+  (loop for square from 1 to (reduce #'max state) summing
         (multiple-value-bind (square-x square-y) (floor (position square state) *width*)
           (multiple-value-bind (*target*-x *target*-y) (floor (position square *target*) *width*)
             (+ (abs (- *target*-x square-x)) (abs (- *target*-y square-y)))))))
