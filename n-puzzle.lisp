@@ -5,95 +5,36 @@
                    (safety 0)
                    (debug 0)))
 
-(defun heap-val (heap i key)
-  (funcall key (aref heap i)))
-
-(defun heap-parent (i)
-  (floor (1- i) 2))
-
-(defun heap-left (i)
-  (+ 1 i i))
-
-(defun heap-right (i)
-  (+ 2 i i))
-
-(defun heap-leafp (heap i)
-  (> i (1- (floor (fill-pointer heap) 2))))
-
-(defun heapify (heap i key)
-  (unless (heap-leafp heap i)
-    (let* ((left-index (heap-left i))
-           (right-index (heap-right i))
-           (smaller-index
-            (if (and (< right-index (fill-pointer heap))
-                     (< (heap-val heap right-index key)
-                        (heap-val heap left-index key)))
-                right-index
-              left-index)))
-      (when (> (heap-val heap i key)
-               (heap-val heap smaller-index key))
-        (rotatef (aref heap i)
-                 (aref heap smaller-index))
-        (heapify heap smaller-index key)))))
-
-(defun heap-pop (heap key)
-  (let ((minimum (aref heap 0)))
-    (decf (fill-pointer heap))
-    (setf (aref heap 0) (aref heap (fill-pointer heap)))
-    (heapify heap 0 key)
-    minimum))
-
-(defun heap-find-pos (heap i val key)
-  (let ((parent-i (heap-parent i)))
-    (if (or (zerop i)
-            (< (heap-val heap parent-i key) val))
-      i
-      (progn
-        (setf (aref heap i) (aref heap parent-i))
-        (heap-find-pos heap parent-i val key)))))
-
-(defun heap-insert (heap item key)
-  (vector-push-extend nil heap)
-  (setf (aref heap (heap-find-pos heap
-                                  (1- (fill-pointer heap))
-                                  (funcall key item)
-                                  key))
-	item))
-
-(defun heap-find (heap val key)
-  (labels ((heap-find-iter (i)
-             (let ((i-val (heap-val heap i key)))
-               (cond
-                ((= i-val val)
-                 (aref heap i))
-                ((or (> i-val val)
-                     (heap-leafp heap i))
-                 nil)
-                (t
-                 (or (heap-find-iter (heap-left i))
-                     (heap-find-iter (heap-right i))))))))
-    (heap-find-iter 0)))
-
-(defun make-heap (&optional (size 1024))
-  (make-array size
-              :fill-pointer 0
-              :adjustable t))
-
 (defstruct fringe
+  (minimum 0)
   (key #'identity)
-  (elements (make-heap)))
+  (elements (make-array 1024 :fill-pointer 0 :adjustable t)))
+
+(defun fringe-existp (f item)
+  (let ((elements (fringe-elements f))
+        (key (funcall (fringe-key f) item)))
+    ;; No need to consider case `key<minimum`
+    (if (<= (fill-pointer elements) key)
+        nil
+      (member item (aref elements key)))))
 
 (defun fringe-remove (f)
-  (heap-pop (fringe-elements f) (fringe-key f)))
+  (let ((elements (fringe-elements f)))
+    (loop while (null (aref elements (fringe-minimum f))) do
+          (incf (fringe-minimum f) 1))
+    (let* ((min-item (car (aref elements (fringe-minimum f)))))
+      (setf (aref elements (fringe-minimum f)) (cdr (aref elements (fringe-minimum f))))
+      min-item)))
 
 (defun fringe-insert (f items)
   (mapc (lambda (item)
-          (heap-insert (fringe-elements f) item (fringe-key f)))
+          (let ((elements (fringe-elements f))
+                (key (funcall (fringe-key f) item)))
+            (loop while (<= (fill-pointer elements) key) do
+                  (vector-push-extend nil elements))
+            (setf (aref elements key) (cons item (aref elements key)))))
         items)
   f)
-
-(defun fringe-find (f key-val)
-  (heap-find (fringe-elements f) key-val (fringe-key f)))
 
 (defstruct node
   state
@@ -111,32 +52,27 @@
 
 (defun A*-search (action heuristic goalp initial-state)
   (labels ((expand (node fringe)
-             (mapcar (lambda (direction-state-cost)
-                       (let ((direction (aref direction-state-cost 0))
-                             (state (aref direction-state-cost 1))
-                             (cost (aref direction-state-cost 2))
-                             (depth (node-depth node)))
-                         (make-node :state state
-                                    :parent node
-                                    :direction direction
-                                    :path-cost (+ depth cost)
-                                    :depth (1+ depth))))
-                     (remove-if (lambda (temp-triple)
-                                  (let ((heap-pos (fringe-find fringe (aref temp-triple 2))))
-                                    (and heap-pos
-                                         (equal (node-state heap-pos) (aref temp-triple 2)))))
-                                (mapcar (lambda (state-direction)
-                                          (let ((state (car state-direction))
-                                                (direction (cdr state-direction)))
-                                            (vector direction state (funcall heuristic state))))
-                                        (funcall action (node-state node) (node-direction node))))))
+             (remove-if (lambda (new-node)
+                          (fringe-existp fringe new-node))
+                        (mapcar (lambda (state-direction)
+                                  (let* ((state (car state-direction))
+                                         (direction (cdr state-direction))
+                                         (cost (funcall heuristic state))
+                                         (depth (1+ (node-depth node))))
+                                    (make-node :state state
+                                               :parent node
+                                               :direction direction
+                                               :path-cost (+ depth cost)
+                                               :depth depth)))
+                                (funcall action (node-state node) (node-direction node)))))
            (search-iter (fringe)
              (let ((node (fringe-remove fringe)))
                (if (funcall goalp (node-state node))
                    (list (direction-sequence node) (node-depth node))
                  (search-iter (fringe-insert fringe (expand node fringe)))))))
     (search-iter (fringe-insert (make-fringe :key #'node-path-cost)
-                                (list (make-node :state initial-state))))))
+                                (list (make-node :state initial-state
+                                                 :path-cost (funcall heuristic initial-state)))))))
 
 (defun IDA*-search (action heuristic goalp initial-state)
   (let ((max-cost-limit 105)
@@ -145,11 +81,11 @@
                (mapcar (lambda (state-direction)
                          (let ((state (car state-direction))
                                (direction (cdr state-direction))
-                               (depth (node-depth node)))
+                               (depth (1+ (node-depth node))))
                            (make-node :state state
                                       :parent node
                                       :direction direction
-                                      :depth (1+ depth))))
+                                      :depth depth)))
                        (funcall action (node-state node) (node-direction node))))
              (search-iter (fringe cost-limit next-cost-limit)
                (if (null fringe)
