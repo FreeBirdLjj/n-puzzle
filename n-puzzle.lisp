@@ -112,9 +112,8 @@
 (defun misplaced (state)
   (declare (special *target*))
   (loop for i from 0 to (1- (length state)) counting
-        (not (=
-              (aref state i)
-              (aref *target* i)))))
+        (/= (aref state i)
+            (aref *target* i))))
 
 (defun swap (state i j)
   ;; move 0 at i to position j with side-effect.
