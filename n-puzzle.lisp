@@ -19,12 +19,12 @@
       (member item (aref elements key)))))
 
 (defun fringe-remove (f)
-  (let ((elements (fringe-elements f)))
-    (loop while (null (aref elements (fringe-minimum f))) do
-          (incf (fringe-minimum f) 1))
-    (let* ((min-item (car (aref elements (fringe-minimum f)))))
-      (setf (aref elements (fringe-minimum f)) (cdr (aref elements (fringe-minimum f))))
-      min-item)))
+  (let ((elements (fringe-elements f))
+	(minimum (fringe-minimum f)))
+    (loop while (null (aref elements minimum)) do
+          (incf minimum 1))
+    (setf (fringe-minimum f) minimum)
+    (pop (aref elements minimum))))
 
 (defun fringe-insert (f items)
   (mapc (lambda (item)
@@ -32,7 +32,7 @@
                 (key (funcall (fringe-key f) item)))
             (loop while (<= (fill-pointer elements) key) do
                   (vector-push-extend nil elements))
-            (setf (aref elements key) (cons item (aref elements key)))))
+            (push item (aref elements key))))
         items)
   f)
 
