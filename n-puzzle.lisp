@@ -126,19 +126,29 @@
       (rotatef (aref temp-state i) (aref temp-state j))
       temp-state)))
 
-(defun move-blank (state pos-0 direction)
+(defun move-blank (state direction)
   (declare (special *width*))
-  (cons (swap state
-              pos-0
-              (case direction
-                (UP
-                 (- pos-0 *width*))
-                (DOWN
-                 (+ pos-0 *width*))
-                (LEFT
-                 (1- pos-0))
-                (RIGHT
-                 (1+ pos-0))))
+  (cons (case direction
+          (UP
+           (let ((i (position 0 state))
+                 (j (- (position 0 state) *width*)))
+             (when (>= j 0)
+               (swap state i j))))
+          (DOWN
+           (let ((i (position 0 state))
+                 (j (+ (position 0 state) *width*)))
+             (when (< j (length state))
+               (swap state i j))))
+          (LEFT
+           (let ((i (position 0 state))
+                 (j (1- (position 0 state))))
+             (unless (zerop (mod i *width*))
+               (swap state i j))))
+          (RIGHT
+           (let ((i (position 0 state))
+                 (j (1+ (position 0 state))))
+             (unless (zerop (mod (1+ i) *width*))
+               (swap state i j)))))
         direction))
 
 (defparameter *width* 3)
@@ -155,19 +165,18 @@
   (equalp node *target*))
 
 (defun action (old-state old-direction)
-  ;; return a list of dotted list (state . direction)
-  (let ((pos-0 (position 0 old-state)))
-    (mapcar (lambda (direction)
-              (move-blank old-state pos-0 direction))
-            (remove (case old-direction
-                      (UP 'DOWN)
-                      (DOWN 'UP)
-                      (RIGHT 'LEFT)
-                      (LEFT 'RIGHT))
-                    (aref '#((   RIGHT DOWN) (LEFT    RIGHT DOWN) (LEFT    DOWN)
-                             (UP RIGHT DOWN) (LEFT UP RIGHT DOWN) (LEFT UP DOWN)
-                             (UP RIGHT     ) (LEFT UP RIGHT     ) (LEFT UP     ))
-                          pos-0)))))
+  ;; return a dotted list (state . direction)
+  (remove nil
+          (mapcar (lambda (direction)
+                    (move-blank old-state direction))
+                  (remove (case old-direction
+                            (UP 'DOWN)
+                            (DOWN 'UP)
+                            (RIGHT 'LEFT)
+                            (LEFT 'RIGHT))
+                          '(UP DOWN RIGHT LEFT)))
+          :key #'car))
+
 
 (defun n-puzzle (search heuristic initial-state)
   (funcall search #'action heuristic #'goalp initial-state))
