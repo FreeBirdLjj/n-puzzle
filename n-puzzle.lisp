@@ -6,20 +6,22 @@
                    (debug 0)))
 
 (defstruct fringe
-  (minimum 0)
-  (key #'identity)
-  (elements (make-array 1024 :fill-pointer 0 :adjustable t)))
+  (minimum 0 :type integer)
+  (key #'identity :type function)
+  (elements (make-array 1024 :fill-pointer 0 :adjustable t) :type array)
+  (hash-elements (make-hash-table)))
 
 (defun fringe-existp (f item)
   (let ((elements (fringe-elements f))
+	(hash-elements (fringe-hash-elements f))
         (key (funcall (fringe-key f) item)))
     ;; No need to consider case `key<minimum`
-    (if (<= (fill-pointer elements) key)
-        nil
-      (member item (aref elements key)))))
+    (unless (<= (fill-pointer elements) key)
+      (gethash item hash-elements))))
 
 (defun fringe-remove (f)
   (let ((elements (fringe-elements f))
+	(hash-elements (fringe-hash-elements f))
 	(minimum (fringe-minimum f)))
     (loop while (null (aref elements minimum)) do
           (incf minimum 1))
@@ -29,19 +31,21 @@
 (defun fringe-insert (f items)
   (mapc (lambda (item)
           (let ((elements (fringe-elements f))
-                (key (funcall (fringe-key f) item)))
+		(hash-elements (fringe-hash-elements f))
+		(key (funcall (fringe-key f) item)))
             (loop while (<= (fill-pointer elements) key) do
                   (vector-push-extend nil elements))
-            (push item (aref elements key))))
+            (push item (aref elements key))
+	    (push t (gethash item hash-elements))))
         items)
   f)
 
 (defstruct node
-  state
+  (state nil :type vector)
   (parent nil)
-  (direction nil)
-  (path-cost 0)
-  (depth 0))
+  (direction nil :type symbol)
+  (path-cost 0 :type integer)
+  (depth 0 :type integer))
 
 (defun direction-sequence (node)
   (labels ((direction-sequence-iter (node directions)
@@ -112,8 +116,8 @@
 (defun misplaced (state)
   (declare (special *target*))
   (loop for i from 0 to (1- (length state)) counting
-        (/= (aref state i)
-            (aref *target* i))))
+       (/= (aref state i)
+	   (aref *target* i))))
 
 (defun swap (state i j)
   ;; move 0 at i to position j with side-effect.
@@ -122,27 +126,20 @@
       (rotatef (aref temp-state i) (aref temp-state j))
       temp-state)))
 
-(defun move-blank (state direction)
+(defun move-blank (state pos-0 direction)
   (declare (special *width*))
-  (let ((pos-0 (position 0 state)))
-    (cons (case direction
-            (UP
-             (let ((to (- pos-0 *width*)))
-               (when (>= to 0)
-                 (swap state pos-0 to))))
-            (DOWN
-             (let ((to (+ pos-0 *width*)))
-               (when (< to (length state))
-                 (swap state pos-0 to))))
-            (LEFT
-             (let ((to (1- pos-0)))
-               (unless (zerop (mod pos-0 *width*))
-                 (swap state pos-0 to))))
-            (RIGHT
-             (let ((to (1+ pos-0)))
-               (unless (zerop (mod to *width*))
-                 (swap state pos-0 to)))))
-          direction)))
+  (cons (swap state
+              pos-0
+              (case direction
+                (UP
+                 (- pos-0 *width*))
+                (DOWN
+                 (+ pos-0 *width*))
+                (LEFT
+                 (1- pos-0))
+                (RIGHT
+                 (1+ pos-0))))
+        direction))
 
 (defparameter *width* 3)
 
@@ -159,16 +156,18 @@
 
 (defun action (old-state old-direction)
   ;; return a list of dotted list (state . direction)
-  (remove nil
-          (mapcar (lambda (direction)
-                    (move-blank old-state direction))
-                  (remove (case old-direction
-                            (UP 'DOWN)
-                            (DOWN 'UP)
-                            (RIGHT 'LEFT)
-                            (LEFT 'RIGHT))
-                          '(UP DOWN RIGHT LEFT)))
-          :key #'car))
+  (let ((pos-0 (position 0 old-state)))
+    (mapcar (lambda (direction)
+              (move-blank old-state pos-0 direction))
+            (remove (case old-direction
+                      (UP 'DOWN)
+                      (DOWN 'UP)
+                      (RIGHT 'LEFT)
+                      (LEFT 'RIGHT))
+                    (aref '#((   RIGHT DOWN) (LEFT    RIGHT DOWN) (LEFT    DOWN)
+                             (UP RIGHT DOWN) (LEFT UP RIGHT DOWN) (LEFT UP DOWN)
+                             (UP RIGHT     ) (LEFT UP RIGHT     ) (LEFT UP     ))
+                          pos-0)))))
 
 (defun n-puzzle (search heuristic initial-state)
   (funcall search #'action heuristic #'goalp initial-state))
