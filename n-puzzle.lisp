@@ -21,7 +21,6 @@
 
 (defun fringe-remove (f)
   (let ((elements (fringe-elements f))
-	(hash-elements (fringe-hash-elements f))
 	(minimum (fringe-minimum f)))
     (loop while (null (aref elements minimum)) do
           (incf minimum 1))
@@ -45,7 +44,8 @@
   (parent nil)
   (direction nil :type symbol)
   (path-cost 0 :type integer)
-  (depth 0 :type integer))
+  (depth 0 :type integer)
+  (pos-0 0 :type integer))
 
 (defun direction-sequence (node)
   (labels ((direction-sequence-iter (node directions)
@@ -58,17 +58,19 @@
   (labels ((expand (node fringe)
              (remove-if (lambda (new-node)
                           (fringe-existp fringe new-node))
-                        (mapcar (lambda (state-direction)
-                                  (let* ((state (car state-direction))
-                                         (direction (cdr state-direction))
+                        (mapcar (lambda (triple)
+                                  (let* ((state (aref triple 0))
+                                         (direction (aref triple 1))
                                          (cost (funcall heuristic state))
-                                         (depth (1+ (node-depth node))))
+                                         (depth (1+ (node-depth node)))
+                                         (pos-0 (aref triple 2)))
                                     (make-node :state state
                                                :parent node
                                                :direction direction
                                                :path-cost (+ depth cost)
-                                               :depth depth)))
-                                (funcall action (node-state node) (node-direction node)))))
+                                               :depth depth
+                                               :pos-0 pos-0)))
+                                (funcall action node))))
            (search-iter (fringe)
              (let ((node (fringe-remove fringe)))
                (if (funcall goalp (node-state node))
@@ -76,21 +78,25 @@
                  (search-iter (fringe-insert fringe (expand node fringe)))))))
     (search-iter (fringe-insert (make-fringe :key #'node-path-cost)
                                 (list (make-node :state initial-state
-                                                 :path-cost (funcall heuristic initial-state)))))))
+                                                 :path-cost (funcall heuristic initial-state)
+                                                 :pos-0 (position 0 initial-state)))))))
 
 (defun IDA*-search (action heuristic goalp initial-state)
   (let ((max-cost-limit 105)
-        (initial-node (make-node :state initial-state)))
+        (initial-node (make-node :state initial-state
+                                 :pos-0 (position 0 initial-state))))
     (labels ((expand (node)
-               (mapcar (lambda (state-direction)
-                         (let ((state (car state-direction))
-                               (direction (cdr state-direction))
-                               (depth (1+ (node-depth node))))
+               (mapcar (lambda (triple)
+                         (let ((state (aref triple 0))
+                               (direction (aref triple 1))
+                               (depth (1+ (node-depth node)))
+                               (pos-0 (aref triple 2)))
                            (make-node :state state
                                       :parent node
                                       :direction direction
-                                      :depth depth)))
-                       (funcall action (node-state node) (node-direction node))))
+                                      :depth depth
+                                      :pos-0 pos-0)))
+                       (funcall action node)))
              (search-iter (fringe cost-limit next-cost-limit)
                (if (null fringe)
                    (search-iter (list initial-node) next-cost-limit max-cost-limit)
@@ -105,13 +111,20 @@
                           (search-iter (nconc (expand node) rst) cost-limit next-cost-limit)))))))
       (search-iter (list initial-node) (funcall heuristic initial-state) max-cost-limit))))
 
-(defun manhattan (state)
-  (declare (special *target*
-                    *width*))
-  (loop for square from 1 to (reduce #'max state) summing
-        (multiple-value-bind (square-x square-y) (floor (position square state) *width*)
-          (multiple-value-bind (*target*-x *target*-y) (floor (position square *target*) *width*)
-            (+ (abs (- *target*-x square-x)) (abs (- *target*-y square-y)))))))
+(defun manhattan-generator (target width)
+  (let ((target-pos
+         (coerce (cons 0
+                       (loop for i from 1 to (reduce #'max target) collecting
+                             (position i target)))
+                 'vector)))
+    (lambda (state)
+      (loop for i from 0 to (1- (length state)) summing
+            (let ((state-i (aref state i)))
+              (if (<= state-i 0)
+                  0
+                (multiple-value-bind (square-x square-y) (floor i width)
+                  (multiple-value-bind (target-x target-y) (floor (aref target-pos state-i) width)
+                    (+ (abs (- target-x square-x)) (abs (- target-y square-y)))))))))))
 
 (defun misplaced (state)
   (declare (special *target*))
@@ -126,30 +139,25 @@
       (rotatef (aref temp-state i) (aref temp-state j))
       temp-state)))
 
-(defun move-blank (state direction)
+(defun move-blank (state direction pos-0)
   (declare (special *width*))
-  (cons (case direction
-          (UP
-           (let ((i (position 0 state))
-                 (j (- (position 0 state) *width*)))
-             (when (>= j 0)
-               (swap state i j))))
-          (DOWN
-           (let ((i (position 0 state))
-                 (j (+ (position 0 state) *width*)))
-             (when (< j (length state))
-               (swap state i j))))
-          (LEFT
-           (let ((i (position 0 state))
-                 (j (1- (position 0 state))))
-             (unless (zerop (mod i *width*))
-               (swap state i j))))
-          (RIGHT
-           (let ((i (position 0 state))
-                 (j (1+ (position 0 state))))
-             (unless (zerop (mod (1+ i) *width*))
-               (swap state i j)))))
-        direction))
+  (case direction
+    (UP
+     (let ((new-pos-0 (- pos-0 *width*)))
+       (when (>= new-pos-0 0)
+         (vector (swap state pos-0 new-pos-0) direction new-pos-0))))
+    (DOWN
+     (let ((new-pos-0 (+ pos-0 *width*)))
+       (when (< new-pos-0 (length state))
+         (vector (swap state pos-0 new-pos-0) direction new-pos-0))))
+    (LEFT
+     (let ((new-pos-0 (1- pos-0)))
+       (unless (zerop (mod pos-0 *width*))
+         (vector (swap state pos-0 new-pos-0) direction new-pos-0))))
+    (RIGHT
+     (let ((new-pos-0 (1+ pos-0)))
+       (unless (zerop (mod (1+ pos-0) *width*))
+         (vector (swap state pos-0 new-pos-0) direction new-pos-0))))))
 
 (defparameter *width* 3)
 
@@ -164,18 +172,20 @@
 (defun goalp (node)
   (equalp node *target*))
 
-(defun action (old-state old-direction)
-  ;; return a dotted list (state . direction)
+(defun action (node)
+  ;; return a list of '(state direction pos-0)
+  (let ((old-state (node-state node))
+        (old-direction (node-direction node))
+        (old-pos-0 (node-pos-0 node)))
   (remove nil
           (mapcar (lambda (direction)
-                    (move-blank old-state direction))
+                    (move-blank old-state direction old-pos-0))
                   (remove (case old-direction
                             (UP 'DOWN)
                             (DOWN 'UP)
                             (RIGHT 'LEFT)
                             (LEFT 'RIGHT))
-                          '(UP DOWN RIGHT LEFT)))
-          :key #'car))
+                          '(UP DOWN RIGHT LEFT))))))
 
 
 (defun n-puzzle (search heuristic initial-state)
@@ -183,10 +193,10 @@
 
 (format t "IDA*-search~%")
 (time (format t "~A~%" (n-puzzle #'IDA*-search
-                                 #'manhattan
+                                 (manhattan-generator *target* *width*)
                                  *start*)))
 
 (format t "A*-search~%")
 (time (format t "~A~%" (n-puzzle #'A*-search
-                                 #'manhattan
+                                 (manhattan-generator *target* *width*)
                                  *start*)))
