@@ -6,18 +6,16 @@
                    (debug 0)))
 
 (defstruct fringe
-  (minimum 0 :type integer)
-  (key #'identity :type function)
+  (state #'identity :type function :read-only t)
+  (key #'identity :type function :read-only t)
   (elements (make-array 1024 :fill-pointer 0 :adjustable t) :type array)
+  ;; Shadow slots, only can be modified by #'fringe-*.
+  (minimum 0 :type integer)
   (hash-elements (make-hash-table)))
 
-(defun fringe-existp (f item)
-  (let ((elements (fringe-elements f))
-	(hash-elements (fringe-hash-elements f))
-        (key (funcall (fringe-key f) item)))
-    ;; No need to consider case `key<minimum`
-    (unless (<= (fill-pointer elements) key)
-      (gethash item hash-elements))))
+(defun fringe-exist-state-p (f state)
+  (let ((hash-elements (fringe-hash-elements f)))
+    (gethash state hash-elements)))
 
 (defun fringe-remove (f)
   (let ((elements (fringe-elements f))
@@ -31,11 +29,12 @@
   (mapc (lambda (item)
           (let ((elements (fringe-elements f))
 		(hash-elements (fringe-hash-elements f))
-		(key (funcall (fringe-key f) item)))
-            (loop while (<= (fill-pointer elements) key) do
+		(key (funcall (fringe-key f) item))
+                (state (funcall (fringe-state f) item)))
+            (loop for i from (fill-pointer elements) to key do
                   (vector-push-extend nil elements))
             (push item (aref elements key))
-	    (push t (gethash item hash-elements))))
+	    (push t (gethash state hash-elements))))
         items)
   f)
 
@@ -56,27 +55,29 @@
 
 (defun A*-search (action heuristic goalp initial-state)
   (labels ((expand (node fringe)
-             (remove-if (lambda (new-node)
-                          (fringe-existp fringe new-node))
-                        (mapcar (lambda (triple)
-                                  (let* ((state (aref triple 0))
-                                         (direction (aref triple 1))
-                                         (cost (funcall heuristic state))
-                                         (depth (1+ (node-depth node)))
-                                         (pos-0 (aref triple 2)))
-                                    (make-node :state state
-                                               :parent node
-                                               :direction direction
-                                               :path-cost (+ depth cost)
-                                               :depth depth
-                                               :pos-0 pos-0)))
+             (mapcar (lambda (triple)
+                       (let* ((state (aref triple 0))
+                              (direction (aref triple 1))
+                              (cost (funcall heuristic state))
+                              (depth (1+ (node-depth node)))
+                              (pos-0 (aref triple 2)))
+                         (make-node :state state
+                                    :parent node
+                                    :direction direction
+                                    :path-cost (+ depth cost)
+                                    :depth depth
+                                    :pos-0 pos-0)))
+                     (remove-if (lambda (triple)
+                                  (let ((state (aref triple 0)))
+                                    (fringe-exist-state-p fringe state)))
                                 (funcall action node))))
            (search-iter (fringe)
              (let ((node (fringe-remove fringe)))
                (if (funcall goalp (node-state node))
                    (list (direction-sequence node) (node-depth node))
                  (search-iter (fringe-insert fringe (expand node fringe)))))))
-    (search-iter (fringe-insert (make-fringe :key #'node-path-cost)
+    (search-iter (fringe-insert (make-fringe :state #'node-state
+                                             :key #'node-path-cost)
                                 (list (make-node :state initial-state
                                                  :path-cost (funcall heuristic initial-state)
                                                  :pos-0 (position 0 initial-state)))))))
@@ -186,7 +187,6 @@
                             (RIGHT 'LEFT)
                             (LEFT 'RIGHT))
                           '(UP DOWN RIGHT LEFT))))))
-
 
 (defun n-puzzle (search heuristic initial-state)
   (funcall search #'action heuristic #'goalp initial-state))
