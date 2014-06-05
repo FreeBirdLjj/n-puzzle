@@ -113,25 +113,29 @@
       (search-iter (list initial-node) (funcall heuristic initial-state) max-cost-limit))))
 
 (defun manhattan-generator (target width)
-  (let ((target-pos
+  (let ((state-length (length target))
+        (target-pos
          (coerce (cons 0
                        (loop for i from 1 to (reduce #'max target) collecting
-                             (position i target)))
+                             (multiple-value-call #'cons (floor (position i target) width))))
                  'vector)))
     (lambda (state)
-      (loop for i from 0 to (1- (length state)) summing
-            (let ((state-i (aref state i)))
-              (if (<= state-i 0)
-                  0
-                (multiple-value-bind (square-x square-y) (floor i width)
-                  (multiple-value-bind (target-x target-y) (floor (aref target-pos state-i) width)
-                    (+ (abs (- target-x square-x)) (abs (- target-y square-y)))))))))))
+      (loop for i from 0 to (1- state-length)
+            for state-i across state
+            when (plusp state-i)
+                sum (multiple-value-bind (square-x square-y) (floor i width)
+                      (let* ((target (aref target-pos state-i))
+                             (target-x (car target))
+                             (target-y (cdr target)))
+                        (+ (abs (- target-x square-x)) (abs (- target-y square-y)))))))))
 
 (defun misplaced (state)
   (declare (special *target*))
-  (loop for i from 0 to (1- (length state)) counting
-       (/= (aref state i)
-	   (aref *target* i))))
+  (loop for i from 0 to (1- (length state))
+        for state-i across state
+        unless (zerop state-i)
+        collect (/= state-i
+                    (aref *target* i))))
 
 (defun swap (state i j)
   ;; move 0 at i to position j with side-effect.
@@ -170,8 +174,8 @@
                               7 2 3
                               0 6 4))
 
-(defun goalp (node)
-  (equalp node *target*))
+(defun goalp (state)
+  (equalp state *target*))
 
 (defun action (node)
   ;; return a list of '(state direction pos-0)
