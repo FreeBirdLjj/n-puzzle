@@ -11,11 +11,11 @@
   (elements (make-array 1024 :fill-pointer 0 :adjustable t) :type array)
   ;; Shadow slots, only can be modified by #'fringe-*.
   (minimum 0 :type integer)
-  (hash-elements (make-hash-table)))
+  (searched (make-hash-table)))
 
 (defun fringe-exist-state-p (f state)
-  (let ((hash-elements (fringe-hash-elements f)))
-    (gethash state hash-elements)))
+  (let ((searched (fringe-searched f)))
+    (gethash state searched)))
 
 (defun fringe-remove (f)
   (let ((elements (fringe-elements f))
@@ -28,13 +28,13 @@
 (defun fringe-insert (f items)
   (mapc (lambda (item)
           (let ((elements (fringe-elements f))
-		(hash-elements (fringe-hash-elements f))
+		(searched (fringe-searched f))
 		(key (funcall (fringe-key f) item))
                 (state (funcall (fringe-state f) item)))
             (loop for i from (fill-pointer elements) to key do
                   (vector-push-extend nil elements))
             (push item (aref elements key))
-	    (push t (gethash state hash-elements))))
+	    (push t (gethash state searched))))
         items)
   f)
 
