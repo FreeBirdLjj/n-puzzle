@@ -1,4 +1,4 @@
-#!/usr/bin/sbcl --script
+#!/usr/bin/env sbcl --script
 
 (declaim (optimize (speed 3)
                    (compilation-speed 0)
