@@ -134,8 +134,8 @@
   (loop for i from 0 to (1- (length state))
         for state-i across state
         unless (zerop state-i)
-        collect (/= state-i
-                    (aref *target* i))))
+        count (/= state-i
+                  (aref *target* i))))
 
 (defun swap (state i j)
   ;; move 0 at i to position j with side-effect.
