@@ -109,7 +109,7 @@
                          ((funcall goalp (node-state node))
                           (list (direction-sequence node) (node-depth node)))
                          (t
-                          (search-iter (nconc (expand node) rst) cost-limit next-cost-limit)))))))
+                          (search-iter (append (expand node) rst) cost-limit next-cost-limit)))))))
       (search-iter (list initial-node) (funcall heuristic initial-state) max-cost-limit))))
 
 (defun manhattan-generator (target width)
