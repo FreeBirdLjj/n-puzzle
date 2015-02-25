@@ -11,7 +11,7 @@
   (elements (make-array 1024 :fill-pointer 0 :adjustable t) :type array)
   ;; Shadow slots, only can be modified by #'fringe-*.
   (minimum 0 :type integer)
-  (searched (make-hash-table)))
+  (searched (make-hash-table) :type hash-table))
 
 (defun fringe-exist-state-p (f state)
   (let ((searched (fringe-searched f)))
@@ -163,6 +163,9 @@
      (let ((new-pos-0 (1+ pos-0)))
        (unless (zerop (mod (1+ pos-0) *width*))
          (vector (swap state pos-0 new-pos-0) direction new-pos-0))))))
+
+(declaim (type integer *width*)
+         (type vector *target* *start*))
 
 (defparameter *width* 3)
 
