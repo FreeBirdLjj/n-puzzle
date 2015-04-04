@@ -39,7 +39,7 @@
   f)
 
 (defstruct node
-  (state nil :type vector)
+  (state nil :type (simple-array fixnum))
   (parent nil :type (or nodep null))
   (direction nil :type symbol)
   (path-cost 0 :type integer)
