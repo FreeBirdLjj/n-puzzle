@@ -173,9 +173,9 @@
                                3 4 5
                                6 7 8))
 
-(defparameter *start* (vector 5 1 8
-                              7 2 3
-                              0 6 4))
+(defparameter *start* (vector 5 1 0
+                              7 2 8
+                              6 4 3))
 
 (defun goalp (state)
   (equalp state *target*))
