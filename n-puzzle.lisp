@@ -8,8 +8,8 @@
 (defstruct fringe
   (state #'identity :type function :read-only t)
   (key #'identity :type function :read-only t)
-  (elements (make-array 1024 :fill-pointer 0 :adjustable t) :type array)
   ;; Shadow slots, only can be modified by #'fringe-*.
+  (extends (vector nil nil nil) :type (simple-array list))
   (minimum 0 :type integer)
   (searched (make-hash-table) :type hash-table))
 
@@ -18,29 +18,41 @@
     (gethash state searched)))
 
 (defun fringe-remove (f)
-  (let ((elements (fringe-elements f))
-	(minimum (fringe-minimum f)))
-    (loop while (null (aref elements minimum)) do
-          (incf minimum 1))
-    (setf (fringe-minimum f) minimum)
-    (pop (aref elements minimum))))
+  (let ((extends (fringe-extends f)))
+    (if (null (aref extends 0))
+	(progn
+	  (incf (fringe-minimum f))
+	  (setf (aref extends 0) (aref extends 1))
+	  (setf (aref extends 1) (aref extends 2))
+	  (setf (aref extends 2) nil)
+	  (fringe-remove f))
+	(pop (aref extends 0)))))
+
+(defun fringe-start (f item)
+  (let ((extends (fringe-extends f))
+	(searched (fringe-searched f))
+	(key (funcall (fringe-key f) item))
+	(state (funcall (fringe-state f) item)))
+    (setf (fringe-minimum f) key)
+    (push item (aref extends 0))
+    (push t (gethash state searched))
+    f))
 
 (defun fringe-insert (f items)
   (mapc (lambda (item)
-          (let ((elements (fringe-elements f))
+          (let ((extends (fringe-extends f))
+		(minimum (fringe-minimum f))
 		(searched (fringe-searched f))
 		(key (funcall (fringe-key f) item))
                 (state (funcall (fringe-state f) item)))
-            (loop for i from (fill-pointer elements) to key do
-                  (vector-push-extend nil elements))
-            (push item (aref elements key))
+            (push item (aref extends (- key minimum)))
 	    (push t (gethash state searched))))
         items)
   f)
 
 (defstruct node
   (state nil :type (simple-array fixnum))
-  (parent nil :type (or nodep null))
+  (parent nil :type t)
   (direction nil :type symbol)
   (path-cost 0 :type integer)
   (depth 0 :type integer)
@@ -76,11 +88,11 @@
                (if (funcall goalp (node-state node))
                    (list (direction-sequence node) (node-depth node))
                  (search-iter (fringe-insert fringe (expand node fringe)))))))
-    (search-iter (fringe-insert (make-fringe :state #'node-state
-                                             :key #'node-path-cost)
-                                (list (make-node :state initial-state
-                                                 :path-cost (funcall heuristic initial-state)
-                                                 :pos-0 (position 0 initial-state)))))))
+    (search-iter (fringe-start (make-fringe :state #'node-state
+					    :key #'node-path-cost)
+			       (make-node :state initial-state
+					  :path-cost (funcall heuristic initial-state)
+					  :pos-0 (position 0 initial-state))))))
 
 (defun IDA*-search (action heuristic goalp initial-state)
   (let ((max-cost-limit 105)
