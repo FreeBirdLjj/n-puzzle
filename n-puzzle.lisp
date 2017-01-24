@@ -9,7 +9,7 @@
   (state #'identity :type function :read-only t)
   (key #'identity :type function :read-only t)
   ;; Shadow slots, only can be modified by #'fringe-*.
-  (extends (vector nil nil nil) :type (simple-array list))
+  (extends (vector nil nil nil) :type (simple-array list (3)))
   (minimum 0 :type integer)
   (searched (make-hash-table) :type hash-table))
 
